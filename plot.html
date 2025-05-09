@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Function Plotter</title>
+    <style>
+        body { 
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #plot-container { 
+            width: 100vw; 
+            height: 100vh; 
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+            max-width: 300px;
+        }
+        button {
+            background: #4CAF50;
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        input, select {
+            width: 80px;
+            padding: 5px;
+            margin: 5px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .control-group {
+            margin: 10px 0;
+        }
+        #function-input {
+            width: 180px;
+        }
+    </style>
+</head>
+<body>
+    <div id="plot-container"></div>
+    <div id="controls">
+        <h2>Function Plotter</h2>
+        
+        <div class="control-group">
+            <input type="text" id="function-input" value="2*x" placeholder="Enter function">
+            <button onclick="plotFunction()">Plot</button>
+        </div>
+        
+        <div class="control-group">
+            <label>Color: </label>
+            <input type="color" id="color-picker" value="#00ff00">
+        </div>
+        
+        <div class="control-group">
+            <label>X Range: </label>
+            <input type="number" id="x-min" value="-5" step="0.1">
+            to
+            <input type="number" id="x-max" value="5" step="0.1">
+        </div>
+        
+        <div class="control-group">
+            <label>Resolution: </label>
+            <select id="resolution">
+                <option value="50">Low</option>
+                <option value="100" selected>Medium</option>
+                <option value="200">High</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <button onclick="plotExample('2*x')">Linear (2x)</button>
+            <button onclick="plotExample('x*x')">Quadratic (x²)</button>
+            <button onclick="plotExample('Math.sin(x)')">Sine Wave</button>
+            <button onclick="plotExample('Math.exp(-x*x/2)')">Bell Curve</button>
+            <button onclick="clearPlot()">Clear All</button>
+        </div>
+    </div>
+
+    <!-- Three.js Library -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- Our plotter implementation -->
+    <script type="module" src="plot.js"></script>
+    
+    <!-- UI Controls -->
+    <script>
+        let plotter;
+        
+        window.onload = function() {
+            plotter = new FunctionPlotter('plot-container', {
+                backgroundColor: 0x111111,
+                axes: true,
+                grid: true
+            });
+            plotExample('2*x');
+        };
+        
+        function plotFunction() {
+            const funcStr = document.getElementById('function-input').value;
+            const color = document.getElementById('color-picker').value;
+            const xMin = parseFloat(document.getElementById('x-min').value);
+            const xMax = parseFloat(document.getElementById('x-max').value);
+            const segments = parseInt(document.getElementById('resolution').value);
+            
+            try {
+                const fn = new Function('x', `return ${funcStr};`);
+                plotter.plotFunction(fn, {
+                    range: { x: [xMin, xMax] },
+                    segments: segments,
+                    color: new THREE.Color(color)
+                });
+            } catch (e) {
+                alert("Invalid function: " + e.message);
+            }
+        }
+        
+        function plotExample(exampleFn) {
+            document.getElementById('function-input').value = exampleFn;
+            plotFunction();
+        }
+        
+        function clearPlot() {
+            plotter.clearAll();
+        }
+        
+        window.addEventListener('resize', function() {
+            if (plotter) plotter.resize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

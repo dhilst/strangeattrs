@@ -4,7 +4,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(30, 30, 30);
+
+// Adjust camera for tighter cube
+camera.position.set(50, 50, 50);
+
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
@@ -13,6 +17,12 @@ document.body.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
+//
+// Update orbit controls
+controls.maxDistance = 100;
+controls.minDistance = 5;
+controls.update();
+
 
 // Set up attractor system
 const maxPoints = 10000;
@@ -112,7 +122,7 @@ function lorenzDerivatives(x, y, z, params) {
   return { dx, dy, dz };
 }
 
-function aizawaDerivatives(x, y, z, params, k) {
+function aizawaDerivatives(x, y, z, params, k = 10) {
   const { a, b, c, d, e, f } = params;
   const dx = ((z / k - b) * x - d * y);
   const dy = (d * x + (z / k - b) * y);
@@ -171,6 +181,36 @@ function resetAttractor() {
   geometry.attributes.color.needsUpdate = true;
   geometry.setDrawRange(0, pointCount);
   updateUIFromParams();
+}
+
+function createVectorField(equation, params) {
+  scene.children = scene.children.filter(child => !(child instanceof THREE.ArrowHelper));
+  const cubeSize = 60; // 60x60x60 cube
+  const minCoord = -30; // -30
+  const maxCoord = 30;  // 30
+  const gridSize = 15;
+  const step = cubeSize / (gridSize - 1); // Step size ~4.29
+  const arrowScale = 0.3;
+  const minArrowLength = 0.03;
+
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      for (let k = 0; k < gridSize; k++) {
+        const x = minCoord + i * step;
+        const y = minCoord + j * step;
+        const z = minCoord + k * step;
+        const { dx, dy, dz } = equation(x, y, z, params);
+        const magnitude = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (magnitude < 0.01 || magnitude > 1000) continue;
+        const dir = new THREE.Vector3(dx, dy, dz).normalize();
+        const length = Math.max(minArrowLength, arrowScale * Math.log(1 + magnitude));
+        const color = new THREE.Color(0, 1, 1 - Math.min(magnitude / 50, 1));
+        const origin = new THREE.Vector3(x, y, z);
+        const arrow = new THREE.ArrowHelper(dir, origin, length, color, 0.2 * length, 0.1 * length);
+        scene.add(arrow);
+      }
+    }
+  }
 }
 
 // Update UI to reflect current parameters
@@ -397,6 +437,49 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+class AttractorUtils {
+  static type() {
+    return document.getElementById('attractor-type').value;
+  }
+
+  static equation() {
+    const typ = this.type();
+    switch (typ) {
+      case 'lorenz':
+        return lorenzDerivatives;
+      case 'aizawa':
+        return aizawaDerivatives;
+      case 'rossler':
+        return rosslerDerivatives;
+      case 'chen':
+        return chenDerivatives;
+      case 'thomas':
+        return thomasDerivatives;
+      case 'dadras':
+        return dadrasDerivatives;
+    }
+  }
+
+  static parameters() {
+    const typ = this.type();
+    switch (typ) {
+      case 'lorenz':
+        return params.lorenz;
+      case 'aizawa':
+        return params.aizawa;
+      case 'rossler':
+        return params.rossler;
+      case 'chen':
+        return params.chen;
+      case 'thomas':
+        return params.thomas;
+      case 'dadras':
+        return params.dadras;
+    }
+  }
+};
+
+
 // Create UI for attractor selection and parameters
 function createUI() {
   const uiContainer = document.createElement('div');
@@ -415,16 +498,16 @@ function createUI() {
 
   const typeSelector = document.createElement('div');
   typeSelector.innerHTML = `
-        <label for="attractor-type">Attractor Type:</label>
-        <select id="attractor-type">
-            <option value="lorenz">Lorenz</option>
-            <option value="aizawa">Aizawa</option>
-            <option value="rossler">Rössler</option>
-            <option value="chen">Chen</option>
-            <option value="thomas">Thomas</option>
-            <option value="dadras">Dadras</option>
-        </select>
-    `;
+<label for="attractor-type">Attractor Type:</label>
+<select id="attractor-type">
+  <option value="lorenz">Lorenz</option>
+  <option value="aizawa">Aizawa</option>
+  <option value="rossler">Rössler</option>
+  <option value="chen">Chen</option>
+  <option value="thomas">Thomas</option>
+  <option value="dadras">Dadras</option>
+</select>
+`;
   uiContainer.appendChild(typeSelector);
 
   const resetButton = document.createElement('button');
@@ -437,28 +520,28 @@ function createUI() {
   lorenzParams.id = 'lorenz-params';
   lorenzParams.className = 'attractor-params';
   lorenzParams.innerHTML = `
-        <h3>Lorenz Parameters</h3>
-        <div>
-            <label for="lorenz-sigma">Sigma:</label>
-            <input type="range" id="lorenz-sigma" min="1" max="20" step="0.1" value="10">
-            <span id="lorenz-sigma-value">10</span>
-        </div>
-        <div>
-            <label for="lorenz-rho">Rho:</label>
-            <input type="range" id="lorenz-rho" min="0" max="100" step="0.1" value="28">
-            <span id="lorenz-rho-value">28</span>
-        </div>
-        <div>
-            <label for="lorenz-beta">Beta:</label>
-            <input type="range" id="lorenz-beta" min="0" max="10" step="0.001" value="2.666">
-            <span id="lorenz-beta-value">2.666</span>
-        </div>
-        <div>
-            <label for="lorenz-dt">Speed:</label>
-            <input type="range" id="lorenz-dt" min="0.001" max="0.05" step="0.001" value="0.01">
-            <span id="lorenz-dt-value">0.01</span>
-        </div>
-    `;
+<h3>Lorenz Parameters</h3>
+<div>
+  <label for="lorenz-sigma">Sigma:</label>
+  <input type="range" id="lorenz-sigma" min="1" max="20" step="0.1" value="10">
+  <span id="lorenz-sigma-value">10</span>
+</div>
+<div>
+  <label for="lorenz-rho">Rho:</label>
+  <input type="range" id="lorenz-rho" min="0" max="100" step="0.1" value="28">
+  <span id="lorenz-rho-value">28</span>
+</div>
+<div>
+  <label for="lorenz-beta">Beta:</label>
+  <input type="range" id="lorenz-beta" min="0" max="10" step="0.001" value="2.666">
+  <span id="lorenz-beta-value">2.666</span>
+</div>
+<div>
+  <label for="lorenz-dt">Speed:</label>
+  <input type="range" id="lorenz-dt" min="0.001" max="0.05" step="0.001" value="0.01">
+  <span id="lorenz-dt-value">0.01</span>
+</div>
+`;
   uiContainer.appendChild(lorenzParams);
 
   const aizawaParams = document.createElement('div');
@@ -466,43 +549,43 @@ function createUI() {
   aizawaParams.className = 'attractor-params';
   aizawaParams.style.display = 'none';
   aizawaParams.innerHTML = `
-        <h3>Aizawa Parameters</h3>
-        <div>
-            <label for="aizawa-a">a:</label>
-            <input type="range" id="aizawa-a" min="0.1" max="2" step="0.01" value="0.95">
-            <span id="aizawa-a-value">0.95</span>
-        </div>
-        <div>
-            <label for="aizawa-b">b:</label>
-            <input type="range" id="aizawa-b" min="0.1" max="2" step="0.01" value="0.7">
-            <span id="aizawa-b-value">0.7</span>
-        </div>
-        <div>
-            <label for="aizawa-c">c:</label>
-            <input type="range" id="aizawa-c" min="0.1" max="2" step="0.01" value="0.6">
-            <span id="aizawa-c-value">0.6</span>
-        </div>
-        <div>
-            <label for="aizawa-d">d:</label>
-            <input type="range" id="aizawa-d" min="1" max="10" step="0.1" value="3.5">
-            <span id="aizawa-d-value">3.5</span>
-        </div>
-        <div>
-            <label for="aizawa-e">e:</label>
-            <input type="range" id="aizawa-e" min="0.1" max="1" step="0.01" value="0.25">
-            <span id="aizawa-e-value">0.25</span>
-        </div>
-        <div>
-            <label for="aizawa-f">f:</label>
-            <input type="range" id="aizawa-f" min="0.01" max="0.5" step="0.01" value="0.1">
-            <span id="aizawa-f-value">0.1</span>
-        </div>
-        <div>
-            <label for="aizawa-dt">Speed:</label>
-            <input type="range" id="aizawa-dt" min="0.001" max="0.05" step="0.001" value="0.01">
-            <span id="aizawa-dt-value">0.01</span>
-        </div>
-    `;
+<h3>Aizawa Parameters</h3>
+<div>
+  <label for="aizawa-a">a:</label>
+  <input type="range" id="aizawa-a" min="0.1" max="2" step="0.01" value="0.95">
+  <span id="aizawa-a-value">0.95</span>
+</div>
+<div>
+  <label for="aizawa-b">b:</label>
+  <input type="range" id="aizawa-b" min="0.1" max="2" step="0.01" value="0.7">
+  <span id="aizawa-b-value">0.7</span>
+</div>
+<div>
+  <label for="aizawa-c">c:</label>
+  <input type="range" id="aizawa-c" min="0.1" max="2" step="0.01" value="0.6">
+  <span id="aizawa-c-value">0.6</span>
+</div>
+<div>
+  <label for="aizawa-d">d:</label>
+  <input type="range" id="aizawa-d" min="1" max="10" step="0.1" value="3.5">
+  <span id="aizawa-d-value">3.5</span>
+</div>
+<div>
+  <label for="aizawa-e">e:</label>
+  <input type="range" id="aizawa-e" min="0.1" max="1" step="0.01" value="0.25">
+  <span id="aizawa-e-value">0.25</span>
+</div>
+<div>
+  <label for="aizawa-f">f:</label>
+  <input type="range" id="aizawa-f" min="0.01" max="0.5" step="0.01" value="0.1">
+  <span id="aizawa-f-value">0.1</span>
+</div>
+<div>
+  <label for="aizawa-dt">Speed:</label>
+  <input type="range" id="aizawa-dt" min="0.001" max="0.05" step="0.001" value="0.01">
+  <span id="aizawa-dt-value">0.01</span>
+</div>
+`;
   uiContainer.appendChild(aizawaParams);
 
   const rosslerParams = document.createElement('div');
@@ -510,28 +593,28 @@ function createUI() {
   rosslerParams.className = 'attractor-params';
   rosslerParams.style.display = 'none';
   rosslerParams.innerHTML = `
-        <h3>Rössler Parameters</h3>
-        <div>
-            <label for="rossler-a">a:</label>
-            <input type="range" id="rossler-a" min="0.1" max="0.4" step="0.01" value="0.2">
-            <span id="rossler-a-value">0.2</span>
-        </div>
-        <div>
-            <label for="rossler-b">b:</label>
-            <input type="range" id="rossler-b" min="0.1" max="0.4" step="0.01" value="0.2">
-            <span id="rossler-b-value">0.2</span>
-        </div>
-        <div>
-            <label for="rossler-c">c:</label>
-            <input type="range" id="rossler-c" min="1" max="14" step="0.1" value="5.7">
-            <span id="rossler-c-value">5.7</span>
-        </div>
-        <div>
-            <label for="rossler-dt">Speed:</label>
-            <input type="range" id="rossler-dt" min="0.001" max="0.05" step="0.001" value="0.01">
-            <span id="rossler-dt-value">0.01</span>
-        </div>
-    `;
+<h3>Rössler Parameters</h3>
+<div>
+  <label for="rossler-a">a:</label>
+  <input type="range" id="rossler-a" min="0.1" max="0.4" step="0.01" value="0.2">
+  <span id="rossler-a-value">0.2</span>
+</div>
+<div>
+  <label for="rossler-b">b:</label>
+  <input type="range" id="rossler-b" min="0.1" max="0.4" step="0.01" value="0.2">
+  <span id="rossler-b-value">0.2</span>
+</div>
+<div>
+  <label for="rossler-c">c:</label>
+  <input type="range" id="rossler-c" min="1" max="14" step="0.1" value="5.7">
+  <span id="rossler-c-value">5.7</span>
+</div>
+<div>
+  <label for="rossler-dt">Speed:</label>
+  <input type="range" id="rossler-dt" min="0.001" max="0.05" step="0.001" value="0.01">
+  <span id="rossler-dt-value">0.01</span>
+</div>
+`;
   uiContainer.appendChild(rosslerParams);
 
   const chenParams = document.createElement('div');
@@ -539,28 +622,28 @@ function createUI() {
   chenParams.className = 'attractor-params';
   chenParams.style.display = 'none';
   chenParams.innerHTML = `
-        <h3>Chen Parameters</h3>
-        <div>
-            <label for="chen-a">a:</label>
-            <input type="range" id="chen-a" min="20" max="50" step="0.1" value="35">
-            <span id="chen-a-value">35</span>
-        </div>
-        <div>
-            <label for="chen-b">b:</label>
-            <input type="range" id="chen-b" min="1" max="10" step="0.1" value="3">
-            <span id="chen-b-value">3</span>
-        </div>
-        <div>
-            <label for="chen-c">c:</label>
-            <input type="range" id="chen-c" min="10" max="40" step="0.1" value="28">
-            <span id="chen-c-value">28</span>
-        </div>
-        <div>
-            <label for="chen-dt">Speed:</label>
-            <input type="range" id="chen-dt" min="0.0001" max="0.01" step="0.0001" value="0.001">
-            <span id="chen-dt-value">0.001</span>
-        </div>
-    `;
+<h3>Chen Parameters</h3>
+<div>
+  <label for="chen-a">a:</label>
+  <input type="range" id="chen-a" min="20" max="50" step="0.1" value="35">
+  <span id="chen-a-value">35</span>
+</div>
+<div>
+  <label for="chen-b">b:</label>
+  <input type="range" id="chen-b" min="1" max="10" step="0.1" value="3">
+  <span id="chen-b-value">3</span>
+</div>
+<div>
+  <label for="chen-c">c:</label>
+  <input type="range" id="chen-c" min="10" max="40" step="0.1" value="28">
+  <span id="chen-c-value">28</span>
+</div>
+<div>
+  <label for="chen-dt">Speed:</label>
+  <input type="range" id="chen-dt" min="0.0001" max="0.01" step="0.0001" value="0.001">
+  <span id="chen-dt-value">0.001</span>
+</div>
+`;
   uiContainer.appendChild(chenParams);
 
   const thomasParams = document.createElement('div');
@@ -568,18 +651,18 @@ function createUI() {
   thomasParams.className = 'attractor-params';
   thomasParams.style.display = 'none';
   thomasParams.innerHTML = `
-        <h3>Thomas Parameters</h3>
-        <div>
-            <label for="thomas-b">b:</label>
-            <input type="range" id="thomas-b" min="0.1" max="0.3" step="0.001" value="0.208186">
-            <span id="thomas-b-value">0.208186</span>
-        </div>
-        <div>
-            <label for="thomas-dt">Speed:</label>
-            <input type="range" id="thomas-dt" min="0.01" max="0.1" step="0.01" value="0.05">
-            <span id="thomas-dt-value">0.05</span>
-        </div>
-    `;
+<h3>Thomas Parameters</h3>
+<div>
+  <label for="thomas-b">b:</label>
+  <input type="range" id="thomas-b" min="0.1" max="0.3" step="0.001" value="0.208186">
+  <span id="thomas-b-value">0.208186</span>
+</div>
+<div>
+  <label for="thomas-dt">Speed:</label>
+  <input type="range" id="thomas-dt" min="0.01" max="0.1" step="0.01" value="0.05">
+  <span id="thomas-dt-value">0.05</span>
+</div>
+`;
   uiContainer.appendChild(thomasParams);
 
   const dadrasParams = document.createElement('div');
@@ -587,45 +670,68 @@ function createUI() {
   dadrasParams.className = 'attractor-params';
   dadrasParams.style.display = 'none';
   dadrasParams.innerHTML = `
-        <h3>Dadras Parameters</h3>
-        <div>
-            <label for="dadras-a">a:</label>
-            <input type="range" id="dadras-a" min="1" max="5" step="0.1" value="3">
-            <span id="dadras-a-value">3</span>
-        </div>
-        <div>
-            <label for="dadras-b">b:</label>
-            <input type="range" id="dadras-b" min="1" max="5" step="0.1" value="2.7">
-            <span id="dadras-b-value">2.7</span>
-        </div>
-        <div>
-            <label for="dadras-c">c:</label>
-            <input type="range" id="dadras-c" min="0.5" max="3" step="0.1" value="1.7">
-            <span id="dadras-c-value">1.7</span>
-        </div>
-        <div>
-            <label for="dadras-d">d:</label>
-            <input type="range" id="dadras-d" min="0.5" max="5" step="0.1" value="2">
-            <span id="dadras-d-value">2</span>
-        </div>
-        <div>
-            <label for="dadras-e">e:</label>
-            <input type="range" id="dadras-e" min="5" max="15" step="0.1" value="9">
-            <span id="dadras-e-value">9</span>
-        </div>
-        <div>
-            <label for="dadras-dt">Speed:</label>
-            <input type="range" id="dadras-dt" min="0.001" max="0.05" step="0.001" value="0.01">
-            <span id="dadras-dt-value">0.01</span>
-        </div>
-    `;
+<h3>Dadras Parameters</h3>
+<div>
+  <label for="dadras-a">a:</label>
+  <input type="range" id="dadras-a" min="1" max="5" step="0.1" value="3">
+  <span id="dadras-a-value">3</span>
+</div>
+<div>
+  <label for="dadras-b">b:</label>
+  <input type="range" id="dadras-b" min="1" max="5" step="0.1" value="2.7">
+  <span id="dadras-b-value">2.7</span>
+</div>
+<div>
+  <label for="dadras-c">c:</label>
+  <input type="range" id="dadras-c" min="0.5" max="3" step="0.1" value="1.7">
+  <span id="dadras-c-value">1.7</span>
+</div>
+<div>
+  <label for="dadras-d">d:</label>
+  <input type="range" id="dadras-d" min="0.5" max="5" step="0.1" value="2">
+  <span id="dadras-d-value">2</span>
+</div>
+<div>
+  <label for="dadras-e">e:</label>
+  <input type="range" id="dadras-e" min="5" max="15" step="0.1" value="9">
+  <span id="dadras-e-value">9</span>
+</div>
+<div>
+  <label for="dadras-dt">Speed:</label>
+  <input type="range" id="dadras-dt" min="0.001" max="0.05" step="0.001" value="0.01">
+  <span id="dadras-dt-value">0.01</span>
+</div>
+`;
+  // Add vector field toggle button
+  const vectorFieldButton = document.createElement('button');
+  vectorFieldButton.id = 'toggle-vector-field';
+  vectorFieldButton.textContent = 'Toggle Vector Field';
+  vectorFieldButton.style.marginTop = '10px';
+  uiContainer.appendChild(vectorFieldButton);
   uiContainer.appendChild(dadrasParams);
 
   document.body.appendChild(uiContainer);
 
   document.getElementById('attractor-type').addEventListener('change', function() {
     changeAttractor(this.value);
+    if (vectorFieldVisible) {
+      createVectorField(AttractorUtils.equation(), AttractorUtils.parameters());
+    }
   });
+
+  // Event listener for vector field toggle
+  let vectorFieldVisible = false;
+  document.getElementById('toggle-vector-field').addEventListener('click', () => {
+    vectorFieldVisible = !vectorFieldVisible;
+    if (vectorFieldVisible) {
+      createVectorField(AttractorUtils.equation(), AttractorUtils.parameters());
+      vectorFieldButton.textContent = 'Hide Vector Field';
+    } else {
+      scene.children = scene.children.filter(child => !(child instanceof THREE.ArrowHelper));
+      vectorFieldButton.textContent = 'Show Vector Field';
+    }
+  });
+
 
   document.getElementById('reset').addEventListener('click', resetAttractor);
 
